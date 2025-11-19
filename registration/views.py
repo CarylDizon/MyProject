@@ -1,45 +1,55 @@
-from django.shortcuts import render
-from .models import UserRegistration
-from .serializer import RegistrationSerializer
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.contrib.auth.hashers import check_password, make_password
+from .models import UserRegistration 
 
-# Create your views here.
-@api_view(['POST'])
-def register_user(request):
-    serializer = RegistrationSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+def authenticate_user(request):
+    if request.method == "GET":
+        if request.session.get("user_id"):
+            return redirect('registration:user_list')
+        return render(request, 'registration/login.html')
 
-@api_view(['GET'])
-def list_user(request):
-    users = UserRegistration.objects.all()
-    serializer = RegistrationSerializer(users, many = True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    email = request.POST.get('email', '').strip()
+    password = request.POST.get('password', '')
 
-@api_view(['GET', 'PUT', 'DELETE'])
-def user_detail(request, pk):
+    if not email or not password:
+        messages.error(request, "Please provide both email and password.")
+        return render(request, 'registration/login.html', {'email': email})
+
     try:
-        user = UserRegistration.objects.get(pk=pk)
+        user = UserRegistration.objects.get(email=email)
     except UserRegistration.DoesNotExist:
-        return Response({"error": "Not Found"}, status=status.HTTP_404_NOT_FOUND)
-    
-    if request.method == 'GET':
-        serializer = RegistrationSerializer(user)
-        return Response(serializer.data)
-    
-    elif request.method == 'PUT':
-        serializer = RegistrationSerializer(user, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            print("Serializer error:", serializer.errors)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-    elif request.method == 'DELETE':
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        messages.error(request, "Invalid credentials.")
+        return render(request, 'registration/login.html', {'email': email})
+
+    if check_password(password, user.password):
+        request.session['user_id'] = user.id
+        request.session['user_name'] = f"{user.first_name} {user.last_name}"
+        return redirect('registration:user_list')
+
+    if user.password == password:
+        user.password = make_password(password)
+        user.save(update_fields=['password'])
+        request.session['user_id'] = user.id
+        request.session['user_name'] = f"{user.first_name} {user.last_name}"
+        return redirect('registration:user_list')
+
+    messages.error(request, "Invalid credentials.")
+    return render(request, 'registration/login.html', {'email': email})
+
+def display_users(request):
+    if not request.session.get('user_id'):
+        return redirect('registration:login') 
+
+    users = UserRegistration.objects.all().order_by('id')
+    return render(request, 'registration/user_list.html', {
+        'users': users,
+        'current_user': request.session.get('user_name')
+    }) 
+
+def sign_out(request):
+    request.session.flush()
+    return redirect('home')  
+
+def home_view(request):
+    return render(request, 'registration/homepage.html')  

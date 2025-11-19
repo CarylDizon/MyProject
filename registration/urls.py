@@ -1,8 +1,10 @@
-from django.urls import path 
+from django.urls import path
 from . import views
 
-urlpatterns =[
-    path('api/register', views.register_user, name='register_user'),
-    path('api/users', views.list_user, name = 'list_user'),
-    path('api/users/<int:pk>/', views.user_detail, name="user_detail"),
+app_name = "registration"
+
+urlpatterns = [
+    path('login/', views.authenticate_user, name='login'),  
+    path('users/', views.display_users, name='user_list'),  
+    path('logout/', views.sign_out, name='logout'),
 ]
